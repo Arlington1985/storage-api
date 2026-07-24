@@ -12,6 +12,7 @@ import os
 from functools import wraps
 
 from flask import Flask, request, jsonify, abort, redirect
+from werkzeug.middleware.proxy_fix import ProxyFix
 from dotenv import load_dotenv, find_dotenv
 
 try:
@@ -24,6 +25,10 @@ except ImportError:  # pragma: no cover
 load_dotenv(find_dotenv('.env', raise_error_if_not_found=False, usecwd=True), override=True)
 
 app = Flask(__name__)
+# Cloud Run terminates TLS at its proxy and forwards plain HTTP, setting
+# X-Forwarded-Proto/-Host. Without this, request.host_url/scheme would report
+# http:// even though the public-facing URL is https://.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 APP_ENV = os.getenv('APP_ENV', 'development')
 
