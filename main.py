@@ -1,14 +1,15 @@
-# main.py - Standalone photo storage/presign service for storage.api.ramsofter.com
+# main.py - Generic object storage presign service for storage.api.ramsofter.com
 #
-# This is intentionally decoupled from bolt-endpoint: it only knows about R2
-# and product photos, nothing about Bolt orders/PIM. Two responsibilities:
-#   1. POST /presign-upload  - FoxPro calls this to get a short-lived, signed
-#      R2 PUT URL for exactly one object. Credentials never leave this server.
-#   2. GET /<provider_id>/<filename> - redirects to the real R2 public object.
-#      This is a 302, not a proxy: no image bytes ever pass through this
-#      service, so Cloud Run cost/egress stays effectively zero regardless of
-#      how many times Bolt (or anyone) fetches a photo.
+# Fully generic: callers (bolt-endpoint, wolt-endpoint, or anything else) pick
+# their own full object_key (e.g. "bolt/pKJYRCxECi/test-aspirin.jpg"). This
+# service knows nothing about Bolt/Wolt/products - just R2 objects. Two jobs:
+#   1. POST /presign-upload  - caller gets a short-lived, signed R2 PUT URL for
+#      exactly one object_key. Credentials never leave this server.
+#   2. GET /<path:object_key> - redirects to the real R2 public object. This is
+#      a 302, not a proxy: no bytes ever pass through this service, so Cloud
+#      Run cost/egress stays near-zero no matter how often it's read.
 import os
+import re
 from functools import wraps
 
 from flask import Flask, request, jsonify, abort, redirect
@@ -71,24 +72,29 @@ else:
     raise ImportError("boto3 is required")
 
 
-def generate_photo_upload_url(provider_id: str, product_id: str,
-                              content_type: str = 'image/jpeg') -> tuple[str, str]:
-    """Returns (object_key, presigned_put_url) for a single product-photo upload.
+# Allowed object_key format: one or more path segments of safe characters,
+# separated by '/'. No leading '/', no '..', no empty segments. This is the
+# only guardrail - callers are fully responsible for their own key layout
+# (e.g. bolt-endpoint sends "bolt/{provider_id}/{product_id}.jpg").
+_OBJECT_KEY_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$')
 
-    Object key layout: {provider_id}/{product_id}.<ext> - this doubles as the
-    public URL path served back by GET /<provider_id>/<filename> below.
-    """
-    if not provider_id or not product_id:
-        raise ValueError("provider_id and product_id are both required.")
 
-    ext = {'image/jpeg': '.jpg', 'image/jpg': '.jpg', 'image/png': '.png'}.get(content_type, '.jpg')
-    object_key = f"{provider_id}/{product_id}{ext}"
-    upload_url = r2_client.generate_presigned_url(
+def validate_object_key(object_key: str) -> str:
+    if not object_key or '..' in object_key or not _OBJECT_KEY_RE.match(object_key):
+        raise ValueError(
+            "Invalid object_key. Use one or more '/'-separated segments of "
+            "letters, digits, '.', '_', '-' (no leading '/', no '..')."
+        )
+    return object_key
+
+
+def generate_upload_url(object_key: str, content_type: str = 'image/jpeg') -> str:
+    """Returns a presigned PUT URL for exactly the given object_key."""
+    return r2_client.generate_presigned_url(
         'put_object',
         Params={'Bucket': R2_BUCKET, 'Key': object_key, 'ContentType': content_type},
         ExpiresIn=R2_PRESIGN_EXPIRES_SECONDS,
     )
-    return object_key, upload_url
 
 
 def require_internal_api_key(f):
@@ -119,15 +125,15 @@ def healthz():
 @require_internal_api_key
 def api_presign_upload():
     data = request.get_json(silent=True) or {}
-    provider_id = data.get('provider_id')
-    product_id = data.get('product_id')
+    object_key = data.get('object_key')
     content_type = data.get('content_type') or 'image/jpeg'
-    if not provider_id or not product_id:
-        abort(400, "Missing 'provider_id' or 'product_id'")
+    if not object_key:
+        abort(400, "Missing 'object_key'")
     try:
-        object_key, upload_url = generate_photo_upload_url(provider_id, product_id, content_type)
+        object_key = validate_object_key(object_key)
     except ValueError as e:
         abort(400, str(e))
+    upload_url = generate_upload_url(object_key, content_type)
 
     request_host = request.host_url.rstrip('/')
     public_url = f"{request_host}/{object_key}"
@@ -140,13 +146,15 @@ def api_presign_upload():
     }), 200
 
 
-@app.route('/<provider_id>/<filename>')
-def serve_photo(provider_id, filename):
+@app.route('/<path:object_key>')
+def serve_object(object_key):
     """Redirects to the real R2 public object. No bytes flow through this
-    service - Bolt/browsers follow the 302 straight to R2's own CDN."""
-    if '..' in provider_id or '..' in filename:
-        abort(400, "Invalid path")
-    target = f"{R2_PUBLIC_BASE_URL.rstrip('/')}/{provider_id}/{filename}"
+    service - callers/browsers follow the 302 straight to R2's own CDN."""
+    try:
+        object_key = validate_object_key(object_key)
+    except ValueError as e:
+        abort(400, str(e))
+    target = f"{R2_PUBLIC_BASE_URL.rstrip('/')}/{object_key}"
     return redirect(target, code=302)
 
 
