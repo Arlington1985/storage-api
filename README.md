@@ -48,6 +48,32 @@ Request:
   callers/browsers will use to read the object back.
 - `content_type` — optional, defaults to `image/jpeg`.
 
+#### How `object_key` / "folders" actually work
+
+R2 (like S3) is a **flat key-value store** — there is no real folder/directory
+concept. An `object_key` such as `bolt/pKJYRCxECi/test-aspirin.jpg` is just one
+opaque string; the `/` characters in it are not directory separators to R2,
+they're just part of the key. R2/consoles/tools *display* keys that share a
+common `/`-prefix as if they were in a folder, purely for convenience.
+
+Practical implications:
+
+- **You never create a folder.** There is no "create folder" call and none is
+  needed — uploading an object with key `wolt/acme-restaurant/menu/burger.jpg`
+  "creates" the appearance of folders `wolt/`, `acme-restaurant/`, `menu/`
+  automatically and instantly, just by that key existing.
+- **Folders never really exist as separate entities**, so an empty folder can't
+  exist, and deleting the only object under a prefix makes that "folder"
+  silently disappear from listings (there was never anything to delete).
+- **Two unrelated uploads can share the same prefix without any coordination**
+  — e.g. `bolt/pKJYRCxECi/a.jpg` and `wolt/acme/b.jpg` don't need a
+  pre-existing `bolt/` or `wolt/` "folder"; just pick key names with whatever
+  prefix structure makes sense to you (per-integration, per-store, per-SKU, etc).
+- **Renaming a "folder" isn't a single operation** — since folders don't
+  really exist, moving `bolt/old-store/*` to `bolt/new-store/*` means
+  re-uploading (or copying) every object under the new key and deleting the
+  old ones; there's no bulk rename.
+
 Response:
 
 ```json

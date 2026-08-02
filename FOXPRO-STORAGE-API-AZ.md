@@ -117,6 +117,31 @@ Content-Type: application/json
 sabit, unikal link təmin edir. Eyni `object_key` ilə yenidən yükləmə edərsənsə,
 əvvəlki şəkil sadəcə **əvəz olunur** (link dəyişmir).
 
+#### "Qovluq" (folder) nədir, "obyekt" (object) nədir? Qovluq yaratmaq lazımdırmı?
+
+Bu, tez-tez çaşdırıcı olan bir mövzudur, ona görə aydın izah edək:
+
+- **R2 (və ümumiyyətlə S3-bənzər sistemlər) əslində "qovluq" anlayışına malik
+  deyil.** Hər şey sadəcə **bir böyük, düz (flat) siyahıdır** — hər elementin
+  (obyektin) adı (`object_key`) var, bu ad daxilində `/` simvolu ola bilər,
+  amma bu, real bir qovluq/direktoriya yaratmır — sadəcə adın bir hissəsidir.
+- **`object_key` = tam, unikal "fayl adı"** (məs.
+  `foxpro/magaza-01/test-aspirin.jpg`). **"Qovluq"** dediyimiz
+  (`foxpro/`, `magaza-01/`) — bu, sadəcə R2-nin/vasitələrin həmin ortaq
+  prefiksi olan açarları bir yerdə qruplaşdırıb qovluq **kimi göstərməsidir**
+  (yalnız görüntü/rahatlıq üçün) — real, ayrıca yaradılan bir qovluq obyekti
+  yoxdur.
+- **Qovluq YARATMAĞA EHTİYAC YOXDUR.** Belə bir addım yoxdur və lazım da deyil.
+  Sadəcə `object_key`-i `foxpro/magaza-01/test-aspirin.jpg` kimi seçib birbaşa
+  yükləyin — "`foxpro/`" və "`magaza-01/`" qovluqları həmin an, avtomatik,
+  sadəcə bu açarın mövcud olması ilə "yaranmış" olur.
+- Nəticə etibarilə, **boş qovluq deyə bir şey ola bilməz** — əgər bir prefiksin
+  (məs. `magaza-01/`) altında heç bir obyekt yoxdursa, o "qovluq" sadəcə heç
+  görünmür (çünki əslində heç vaxt real olaraq mövcud olmayıb).
+- Fərqli mağaza/SKU-lar üçün əvvəlcədən heç nə "hazırlamağa" ehtiyac yoxdur —
+  sadəcə hər yükləmə üçün özünüzə uyğun, aydın bir `object_key` seçin (məs.
+  `foxpro/{magaza_kodu}/{sku}.jpg`), qalanını R2 özü "görüntü" olaraq həll edir.
+
 ---
 
 ### 1.3. `GET /{object_key}` — şəkli görüntüləmə
