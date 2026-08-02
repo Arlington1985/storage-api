@@ -129,6 +129,37 @@ Nümunə: `https://storage.api.ramsofter.com/foxpro/magaza-01/test-aspirin.jpg`
 
 ---
 
+### 1.4. `DELETE /{object_key}` — şəkli silmə
+
+Şəkli **həmişəlik** silmək üçün istifadə olunur. Bu, geri qaytarıla bilməyən
+(irreversible) bir əməliyyatdır.
+
+**Sorğu başlıqları:**
+
+```
+Authorization: Bearer <STORAGE_API_KEY>
+```
+
+**Sorğu:** bədən lazım deyil, `object_key` birbaşa URL-in bir hissəsidir:
+
+```
+DELETE https://storage.api.ramsofter.com/foxpro/magaza-01/test-aspirin.jpg
+```
+
+**Cavab (200 OK, JSON):**
+
+```json
+{ "deleted": true, "object_key": "foxpro/magaza-01/test-aspirin.jpg" }
+```
+
+> ⚠️ Artıq mövcud olmayan (əvvəl silinmiş və ya heç yüklənməmiş) bir
+> `object_key`-i silmək cəhdi də `200` qaytarır — R2/S3-ün silmə əməliyyatı
+> "idempotent"dir, yəni "silindi" ilə "onsuz da yox idi" arasında fərq yoxdur.
+
+**Mümkün xətalar:** `401`/`403` (açar səhvdir), `400` (`object_key` formatı yanlışdır).
+
+---
+
 ## 2. FoxPro (VFP) tam nümunə
 
 VFP-də daxili JSON parse funksiyası yoxdur. `storage-api` cavabı sadə, sabit
@@ -221,6 +252,28 @@ lcJson = '{"upload_url":"https://example.com/x","object_key":"a/b.jpg","public_u
 * Nəticə: https://storage.api.ramsofter.com/a/b.jpg
 ```
 
+### 2.1. Şəkli silmək (VFP)
+
+```foxpro
+LOCAL lcBaseUrl, lcApiKey, lcObjectKey, loHttp, lnStatus
+
+lcBaseUrl   = "https://storage.api.ramsofter.com"
+lcApiKey    = "YOUR_STORAGE_API_KEY"
+lcObjectKey = "foxpro/magaza-01/test-aspirin.jpg"
+
+loHttp = CREATEOBJECT("MSXML2.ServerXMLHTTP.6.0")
+loHttp.Open("DELETE", lcBaseUrl + "/" + lcObjectKey, .F.)
+loHttp.setRequestHeader("Authorization", "Bearer " + lcApiKey)
+loHttp.send()
+
+lnStatus = loHttp.status
+IF lnStatus = 200
+    MESSAGEBOX("Şəkil silindi: " + lcObjectKey)
+ELSE
+    MESSAGEBOX("Xəta (silmə), kod: " + TRANSFORM(lnStatus) + CHR(13) + loHttp.responseText)
+ENDIF
+```
+
 ---
 
 ## 3. curl ilə test (istifadəçi əl ilə yoxlamaq istəsə)
@@ -243,6 +296,10 @@ curl -sS -X PUT "$UPLOAD_URL" -H "Content-Type: image/jpeg" --data-binary @test-
 
 # 3) Daimi link
 echo "$PUBLIC_URL"
+
+# 4) Silmək (lazım olsa)
+curl -X DELETE "$BASE_URL/foxpro/magaza-01/test-aspirin.jpg" \
+  -H "Authorization: Bearer $API_KEY"
 ```
 
 ---
@@ -254,6 +311,7 @@ echo "$PUBLIC_URL"
 | Yükləmə linki al | `/presign-upload` | `POST` | `object_key`, `content_type` |
 | Şəkli yüklə | `upload_url` (cavabdan) | `PUT` | binar fayl məzmunu |
 | Şəkli göstər / istifadə et | `public_url` (cavabdan) | `GET` | — |
+| Şəkli silmək | `/{object_key}` | `DELETE` | `Authorization` başlığı |
 
 **Əsas qaydalar:**
 - Hər sorğuya `Authorization: Bearer <STORAGE_API_KEY>` başlığı əlavə edin

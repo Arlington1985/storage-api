@@ -146,7 +146,7 @@ def api_presign_upload():
     }), 200
 
 
-@app.route('/<path:object_key>')
+@app.route('/<path:object_key>', methods=['GET'])
 def serve_object(object_key):
     """Redirects to the real R2 public object. No bytes flow through this
     service - callers/browsers follow the 302 straight to R2's own CDN."""
@@ -156,6 +156,19 @@ def serve_object(object_key):
         abort(400, str(e))
     target = f"{R2_PUBLIC_BASE_URL.rstrip('/')}/{object_key}"
     return redirect(target, code=302)
+
+
+@app.route('/<path:object_key>', methods=['DELETE'])
+@require_internal_api_key
+def delete_object(object_key):
+    """Deletes the object from R2. Auth-protected like /presign-upload -
+    this is a destructive, irreversible operation."""
+    try:
+        object_key = validate_object_key(object_key)
+    except ValueError as e:
+        abort(400, str(e))
+    r2_client.delete_object(Bucket=R2_BUCKET, Key=object_key)
+    return jsonify({"deleted": True, "object_key": object_key}), 200
 
 
 if __name__ == '__main__':

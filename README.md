@@ -72,6 +72,25 @@ curl -X PUT "$UPLOAD_URL" -H "Content-Type: image/jpeg" --data-binary @photo.jpg
 Redirects (`302`) to the real R2 public object. Use `public_url` from the
 presign response, or construct it yourself as `{base_url}/{object_key}`.
 
+### `DELETE /<object_key>`
+
+Auth-protected (same `Authorization: Bearer <INTERNAL_API_KEY>` as
+`/presign-upload`). Permanently deletes the object from R2.
+
+```bash
+curl -X DELETE "$BASE_URL/bolt/pKJYRCxECi/test-aspirin.jpg" \
+  -H "Authorization: Bearer $INTERNAL_API_KEY"
+```
+
+Response:
+
+```json
+{"deleted": true, "object_key": "bolt/pKJYRCxECi/test-aspirin.jpg"}
+```
+
+Deleting a key that doesn't exist still returns `200` (S3/R2 delete is
+idempotent) — there's no way to distinguish "deleted" from "was already gone".
+
 ### `GET /healthz`
 
 Returns `{"status": "ok", "env": "..."}`.
@@ -96,6 +115,10 @@ PUBLIC_URL=$(echo "$RESP" | jq -r .public_url)
 curl -sS -X PUT "$UPLOAD_URL" -H "Content-Type: image/jpeg" --data-binary @photo.jpg
 
 echo "$PUBLIC_URL"   # store this as e.g. Bolt's product image_url
+
+# To remove it later:
+curl -X DELETE "$BASE_URL/bolt/pKJYRCxECi/test-aspirin.jpg" \
+  -H "Authorization: Bearer $INTERNAL_API_KEY"
 ```
 
 ## Environment variables
